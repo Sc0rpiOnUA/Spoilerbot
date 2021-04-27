@@ -100,6 +100,13 @@ def delete_encouragement(index):
   else:
     return f"No custom encouragements yet. Type ``{prefix}new`` to add some."
 
+def new_spoiler_channels(server_id, channel, all_channels):
+  if all_channels == True:
+    db[f"{server_id}_autospoilering_all"] = "True"
+  else:
+    db[f"{server_id}_autospoilering_all"] = "False"
+    db[f"{server_id}_{channel}_autospoilering"] = "True"
+
 def create_standard_embed(embed_title, embed_description, embed_color):
   new_embed = discord.Embed(title=embed_title, description=embed_description, color=embed_color)
   return new_embed
@@ -121,13 +128,17 @@ async def autospoilering(message):
     return  
 
   if attachments:
-    await message.delete()
-    for attachment in attachments:
-      message_text = "**From** " + author.mention + "\n\n" + msg
-      file = attachment
-      file.filename = f"SPOILER_{file.filename}"
-      spoiler = await file.to_file()      
-      await message.channel.send(content=message_text, file=spoiler)
+    server_id = message.guild.id
+    channel = message.channel
+    if (f"{server_id}_{channel}_autospoilering" in db.keys() and db[f"{server_id}_{channel}_autospoilering"] == "True") or\
+    (f"{server_id}_autospoilering_all" in db.keys() and db[f"{server_id}_autospoilering_all"] == "True"):
+      await message.delete()
+      for attachment in attachments:
+        message_text = "**From** " + author.mention + "\n\n" + msg
+        file = attachment
+        file.filename = f"SPOILER_{file.filename}"
+        spoiler = await file.to_file()      
+        await message.channel.send(content=message_text, file=spoiler)
 
 @client.listen("on_message")
 async def encouraging(message):
@@ -176,6 +187,14 @@ async def enew(ctx, encouraging_message):
 async def edelete(ctx, index):
   deletion_embed = create_standard_embed("Deleting encouragement...", delete_encouragement(index), basic_color)  
   await ctx.channel.send(embed=deletion_embed)
+
+@client.command()
+async def spoilcc(ctx):
+  channel = ctx.channel
+  server_id = ctx.guild.id
+  new_spoiler_channels(server_id, channel, False)
+  new_spoiler_embed = create_standard_embed("Spoilering channel...", f"Autospoilering for {channel.mention} channel enabled!", basic_color)
+  await ctx.channel.send(embed=new_spoiler_embed)
 #===========================================================
 
 keep_alive()
