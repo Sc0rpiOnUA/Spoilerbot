@@ -18,6 +18,11 @@ help_description = "Currently available commands for Spoilerbot"
 general_commands = f"\
 `{prefix}help` - list all the available commands"
 
+autospoilering_commands = f"\
+`{prefix}aslist` - list all autospoiled channels\n\
+`{prefix}ason` - turn ON autospoilering in the current channel\n\
+`{prefix}asoff` - turn OFF autospoilering in the current channel"
+
 inspire_commands = f"\
 `{prefix}inspiroquote` - get an inspirational quote\n\
 `{prefix}inspiropic` - get an image from inspirobot"
@@ -29,6 +34,7 @@ encouragement_commands = f"\
 
 help_menu = {
   "General" : general_commands,
+  "Autospoilering" : autospoilering_commands,
   "Inspiration" : inspire_commands,
   "Encouragements" : encouragement_commands
 }
@@ -100,6 +106,41 @@ def delete_encouragement(index):
   else:
     return f"No custom encouragements yet. Type ``{prefix}new`` to add some."
 
+def new_spoiler_channels(server_id, channel, all_channels):
+  if all_channels == True:
+    db[f"{server_id}_autospoilering_all"] = "True"
+  else:
+    db[f"{server_id}_autospoilering_all"] = "False"
+    db[f"{server_id}_{channel}_autospoilering"] = "True"
+
+#!!!!!!!!!!!!!!!!!!!!!! Splitting needs rework !!!!!!!!!!!!!!!!!!!!!!!!!
+def list_spoiler_channels(server_id):
+  all_autospoiled = False
+  channels = []
+  server_options = db.prefix(server_id)
+  for server_option in server_options:
+    sections = server_option.split('_')
+    if sections[1] + "_" + sections[2] == "autospoilering_all" and db[server_option] == "True":
+      all_autospoiled = True
+    if sections[2] == "autospoilering" and db[server_option] == "True":
+      channels.append(sections[1])
+  return channels, all_autospoiled
+
+def delete_spoiler_channels(server_id, channel, all_channels):
+  if all_channels == True:
+    server_options = db.prefix(server_id)
+    if f"{server_id}_autospoilering_all" in db.keys():
+      db[f"{server_id}_autospoilering_all"] = "False"
+    for server_option in server_options:
+      sections = server_option.split('_')
+      if sections[2] == "autospoilering":
+        db[server_option] = "False"
+  else:
+    if f"{server_id}_autospoilering_all" in db.keys():
+      db[f"{server_id}_autospoilering_all"] = "False"
+    if f"{server_id}_{channel}_autospoilering" in db.keys():
+      db[f"{server_id}_{channel}_autospoilering"] = "False"
+
 def create_standard_embed(embed_title, embed_description, embed_color):
   new_embed = discord.Embed(title=embed_title, description=embed_description, color=embed_color)
   return new_embed
@@ -121,13 +162,17 @@ async def autospoilering(message):
     return  
 
   if attachments:
-    await message.delete()
-    for attachment in attachments:
-      message_text = "**From** " + author.mention + "\n\n" + msg
-      file = attachment
-      file.filename = f"SPOILER_{file.filename}"
-      spoiler = await file.to_file()      
-      await message.channel.send(content=message_text, file=spoiler)
+    server_id = message.guild.id
+    channel = message.channel
+    if (f"{server_id}_{channel}_autospoilering" in db.keys() and db[f"{server_id}_{channel}_autospoilering"] == "True") or\
+    (f"{server_id}_autospoilering_all" in db.keys() and db[f"{server_id}_autospoilering_all"] == "True"):
+      await message.delete()
+      for attachment in attachments:
+        message_text = "**From** " + author.mention + "\n\n" + msg
+        file = attachment
+        file.filename = f"SPOILER_{file.filename}"
+        spoiler = await file.to_file()      
+        await message.channel.send(content=message_text, file=spoiler)
 
 @client.listen("on_message")
 async def encouraging(message):
@@ -176,6 +221,33 @@ async def enew(ctx, encouraging_message):
 async def edelete(ctx, index):
   deletion_embed = create_standard_embed("Deleting encouragement...", delete_encouragement(index), basic_color)  
   await ctx.channel.send(embed=deletion_embed)
+
+@client.command()
+async def aslist(ctx):
+  server_id = ctx.guild.id
+  spoiled_channels = list_spoiler_channels(server_id)
+  if spoiled_channels[1] == True:
+    new_spoiler_embed = create_standard_embed("Autospoiled channels:", "All channels are being autospoiled!", basic_color)
+  else:
+    new_line = "\n"
+    new_spoiler_embed = create_standard_embed("Autospoiled channels:", f"{new_line.join(spoiled_channels[0])}", basic_color)
+  await ctx.channel.send(embed=new_spoiler_embed)
+
+@client.command()
+async def ason(ctx):
+  channel = ctx.channel
+  server_id = ctx.guild.id
+  new_spoiler_channels(server_id, channel, False)
+  new_spoiler_embed = create_standard_embed("Enabling autospoilering...", f"Autospoilering for {channel.mention} channel enabled!", basic_color)
+  await ctx.channel.send(embed=new_spoiler_embed)
+
+@client.command()
+async def asoff(ctx):
+  channel = ctx.channel
+  server_id = ctx.guild.id
+  delete_spoiler_channels(server_id, channel, False)
+  new_spoiler_embed = create_standard_embed("Disabling autospoilering...", f"Autospoilering for {channel.mention} channel disabled!", basic_color)
+  await ctx.channel.send(embed=new_spoiler_embed)
 #===========================================================
 
 keep_alive()
