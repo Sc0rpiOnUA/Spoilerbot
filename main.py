@@ -20,7 +20,8 @@ general_commands = f"\
 
 autospoilering_commands = f"\
 `{prefix}aslist` - list all autospoiled channels\n\
-`{prefix}asadd` - turn on autospoilering in the current channel"
+`{prefix}ason` - turn ON autospoilering in the current channel\n\
+`{prefix}asoff` - turn OFF autospoilering in the current channel"
 
 inspire_commands = f"\
 `{prefix}inspiroquote` - get an inspirational quote\n\
@@ -125,6 +126,21 @@ def list_spoiler_channels(server_id):
       channels.append(sections[1])
   return channels, all_autospoiled
 
+def delete_spoiler_channels(server_id, channel, all_channels):
+  if all_channels == True:
+    server_options = db.prefix(server_id)
+    if f"{server_id}_autospoilering_all" in db.keys():
+      db[f"{server_id}_autospoilering_all"] = "False"
+    for server_option in server_options:
+      sections = server_option.split('_')
+      if sections[2] == "autospoilering":
+        db[server_option] = "False"
+  else:
+    if f"{server_id}_autospoilering_all" in db.keys():
+      db[f"{server_id}_autospoilering_all"] = "False"
+    if f"{server_id}_{channel}_autospoilering" in db.keys():
+      db[f"{server_id}_{channel}_autospoilering"] = "False"
+
 def create_standard_embed(embed_title, embed_description, embed_color):
   new_embed = discord.Embed(title=embed_title, description=embed_description, color=embed_color)
   return new_embed
@@ -207,14 +223,6 @@ async def edelete(ctx, index):
   await ctx.channel.send(embed=deletion_embed)
 
 @client.command()
-async def asadd(ctx):
-  channel = ctx.channel
-  server_id = ctx.guild.id
-  new_spoiler_channels(server_id, channel, False)
-  new_spoiler_embed = create_standard_embed("Spoilering channel...", f"Autospoilering for {channel.mention} channel enabled!", basic_color)
-  await ctx.channel.send(embed=new_spoiler_embed)
-
-@client.command()
 async def aslist(ctx):
   server_id = ctx.guild.id
   spoiled_channels = list_spoiler_channels(server_id)
@@ -223,6 +231,22 @@ async def aslist(ctx):
   else:
     new_line = "\n"
     new_spoiler_embed = create_standard_embed("Autospoiled channels:", f"{new_line.join(spoiled_channels[0])}", basic_color)
+  await ctx.channel.send(embed=new_spoiler_embed)
+
+@client.command()
+async def ason(ctx):
+  channel = ctx.channel
+  server_id = ctx.guild.id
+  new_spoiler_channels(server_id, channel, False)
+  new_spoiler_embed = create_standard_embed("Enabling autospoilering...", f"Autospoilering for {channel.mention} channel enabled!", basic_color)
+  await ctx.channel.send(embed=new_spoiler_embed)
+
+@client.command()
+async def asoff(ctx):
+  channel = ctx.channel
+  server_id = ctx.guild.id
+  delete_spoiler_channels(server_id, channel, False)
+  new_spoiler_embed = create_standard_embed("Disabling autospoilering...", f"Autospoilering for {channel.mention} channel disabled!", basic_color)
   await ctx.channel.send(embed=new_spoiler_embed)
 #===========================================================
 
