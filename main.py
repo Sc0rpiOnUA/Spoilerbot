@@ -93,7 +93,7 @@ def update_encouragements(encouraging_message):
     db["encouragements"] = [encouraging_message]
 
 def delete_encouragement(index):
-  if "encouragements" in db.keys():
+  if "encouragements" in db.keys():    
     encouragements = db["encouragements"]
     if encouragements and index >= 0 and index < len(encouragements) :
       del encouragements[index]
@@ -212,14 +212,14 @@ async def elist(ctx):
   await ctx.channel.send(embed=encouragements_embed)
 
 @client.command()
-async def enew(ctx, encouraging_message):
+async def enew(ctx, *, encouraging_message):
   update_encouragements(encouraging_message)
   new_encouragement_embed = create_standard_embed("Adding encouragement...", "New encouraging message added!", basic_color)
   await ctx.channel.send(embed=new_encouragement_embed)
 
 @client.command()
 async def edelete(ctx, index):
-  deletion_embed = create_standard_embed("Deleting encouragement...", delete_encouragement(index), basic_color)  
+  deletion_embed = create_standard_embed("Deleting encouragement...", delete_encouragement(int(index)-1), basic_color)  
   await ctx.channel.send(embed=deletion_embed)
 
 @client.command()
