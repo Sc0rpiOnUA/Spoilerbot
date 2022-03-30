@@ -4,6 +4,8 @@ import requests
 import json
 import random
 from discord.ext import commands
+from discord_slash import SlashCommand, SlashContext
+from discord_slash.utils.manage_commands import create_choice, create_option
 from replit import db
 from keep_alive import keep_alive
 
@@ -11,9 +13,12 @@ prefix = "$"
 basic_color = 0x98ff98 # - Mint Green
 
 client = commands.Bot(command_prefix=prefix, help_command=None)
+slash = SlashCommand(client, sync_commands=True)
 
 #Commands for help menu
-help_description = "Currently available commands for Spoilerbot"
+help_description = f"Currently available commands for Spoilerbot\n\n\
+**Spoilerbot supports slash commands!**\n\
+To access them, use `/` instead of the prefix `{prefix}`\n"
 
 general_commands = f"\
 `{prefix}help` - list all the available commands"
@@ -52,7 +57,7 @@ starter_encouragements = [
   "Cheer up!",
   "Hang in there!",
   "You are awesome!"]
-#--------------------------------------------------------------
+#-----------------------General functions-----------------------
 
 def get_inspiroquote():
   response = requests.get\
@@ -187,68 +192,202 @@ async def encouraging(message):
 
   if any(word in msg.lower() for word in sad_words):
     await message.channel.send(random.choice(options))
-#--------------------------------------------------------------
+#---------------------Commands functions---------------------
 
-@client.command()
-async def help(ctx):
+def create_help_embed():
   help_embed = create_standard_embed("Spoilerbot Help", help_description, basic_color)
   for section_name, section_value in help_menu.items():
     help_embed.add_field(name=section_name, value=section_value, inline=False)
-  await ctx.channel.send(embed=help_embed)
+  return help_embed
+
+def create_inspiroquote_embed():
+  quote = get_inspiroquote()
+  inspire_embed = create_standard_embed(quote[0], " -" + quote[1], basic_color)
+  return inspire_embed
+
+def create_encouragements_embed():
+  encouragements_embed = create_standard_embed("Custom encouragements:", list_encouragements(), basic_color)
+  return encouragements_embed
+
+def add_new_encouragement(encouraging_message):
+  update_encouragements(encouraging_message)
+  new_encouragement_embed = create_standard_embed("Adding encouragement...", "New encouraging message added!", basic_color)
+  return new_encouragement_embed
+
+def delete_encouragement_embed(index):
+  deletion_embed = create_standard_embed("Deleting encouragement...", delete_encouragement(int(index)-1), basic_color)
+  return deletion_embed
+
+def create_spoilered_embed(ctx):
+  server_id = ctx.guild.id
+  spoiled_channels = list_spoiler_channels(server_id)
+  if spoiled_channels[1] == True:
+    new_spoiler_embed = create_standard_embed("Autospoilered channels:", "All channels are being autospoilered!", basic_color)
+  else:
+    new_line = "\n"
+    new_spoiler_embed = create_standard_embed("Autospoilered channels:", f"{new_line.join(spoiled_channels[0])}", basic_color)
+  return new_spoiler_embed
+
+def spoiler_the_channel(ctx):
+  channel = ctx.channel
+  server_id = ctx.guild.id
+  new_spoiler_channels(server_id, channel, False)
+  new_spoiler_embed = create_standard_embed("Enabling autospoilering...", f"Autospoilering for {channel.mention} channel enabled!", basic_color)
+  return new_spoiler_embed
+
+def unspoiler_the_channel(ctx):
+  channel = ctx.channel
+  server_id = ctx.guild.id
+  delete_spoiler_channels(server_id, channel, False)
+  new_spoiler_embed = create_standard_embed("Disabling autospoilering...", f"Autospoilering for {channel.mention} channel disabled!", basic_color)
+  return new_spoiler_embed
+#========================Slash commands========================
+
+#For faster slash commands update, use guild IDs inside slash.slash():
+#guild_ids=[525370181074157578, 813813645351059456]
+  
+#Ping
+@slash.slash(
+  name="ping",
+  description="Ping",
+  guild_ids=[525370181074157578, 813813645351059456]
+)
+async def _ping(ctx:SlashContext):
+  await ctx.send("Pong!")
+
+#Help menu
+@slash.slash(
+  name="help",
+  description="Displays help commands",
+  guild_ids=[525370181074157578, 813813645351059456]
+)
+async def _help(ctx:SlashContext):  
+  await ctx.send(embed=create_help_embed())
+
+@client.command()
+async def help(ctx): 
+  await ctx.channel.send(embed=create_help_embed())
+
+#Get quote from Inspirobot
+@slash.slash(
+  name="inspiroquote",
+  description="Get quote from Inspirobot",
+  guild_ids=[525370181074157578, 813813645351059456]
+)
+async def _inspiroquote(ctx:SlashContext):  
+  await ctx.send(embed=create_inspiroquote_embed())
 
 @client.command()
 async def inspiroquote(ctx):
-  quote = get_inspiroquote()
-  inspire_embed = create_standard_embed(quote[0], " -" + quote[1], basic_color)
-  await ctx.channel.send(embed=inspire_embed)
+  await ctx.channel.send(embed=create_inspiroquote_embed())
+
+#Get a picture from Inspirobot
+@slash.slash(
+  name="inspiropic",
+  description="Get a picture from Inspirobot",
+  guild_ids=[525370181074157578, 813813645351059456]
+)
+async def _inspiropic(ctx:SlashContext):  
+  await ctx.send(get_inspiropic())
 
 @client.command()
 async def inspiropic(ctx):
   await ctx.channel.send(get_inspiropic())
 
-@client.command()
-async def elist(ctx):
-  encouragements_embed = create_standard_embed("Custom encouragements:", list_encouragements(), basic_color)      
-  await ctx.channel.send(embed=encouragements_embed)
+#List custom encouragements
+@slash.slash(
+  name="elist",
+  description="List custom encouragements",
+  guild_ids=[525370181074157578, 813813645351059456]
+)
+async def _elist(ctx:SlashContext):  
+  await ctx.send(embed=create_encouragements_embed())
 
 @client.command()
-async def enew(ctx, *, encouraging_message):
-  update_encouragements(encouraging_message)
-  new_encouragement_embed = create_standard_embed("Adding encouragement...", "New encouraging message added!", basic_color)
-  await ctx.channel.send(embed=new_encouragement_embed)
+async def elist(ctx):
+  await ctx.channel.send(embed=create_encouragements_embed())
+
+#Add new encouragement
+@slash.slash(
+  name="enew",
+  description="Add new encouragement",
+  guild_ids=[525370181074157578, 813813645351059456],
+  options=[
+    create_option(
+      name="encouragement",
+      description="New encouragement!",
+      required=True,
+      option_type=3
+    )
+  ]
+)
+async def _enew(ctx:SlashContext, *, encouragement:str):  
+  await ctx.send(embed=add_new_encouragement(encouragement))
+
+@client.command()
+async def enew(ctx, *, encouragement):
+  await ctx.channel.send(embed=add_new_encouragement(encouragement))
+
+#Delete encouragement
+@slash.slash(
+  name="edelete",
+  description="Delete encouragement from index",
+  guild_ids=[525370181074157578, 813813645351059456],
+  options=[
+    create_option(
+      name="index",
+      description="Encouragement index",
+      required=True,
+      option_type=4
+    )
+  ]
+)
+async def _edelete(ctx:SlashContext, index:int):  
+  await ctx.send(embed=delete_encouragement_embed(index))
 
 @client.command()
 async def edelete(ctx, index):
-  deletion_embed = create_standard_embed("Deleting encouragement...", delete_encouragement(int(index)-1), basic_color)  
-  await ctx.channel.send(embed=deletion_embed)
+  await ctx.channel.send(embed=delete_encouragement_embed(index))
+
+#List spoilered channels
+@slash.slash(
+  name="aslist",
+  description="List channels with automatic spoilering",
+  guild_ids=[525370181074157578, 813813645351059456]
+)
+async def _aslist(ctx:SlashContext):  
+  await ctx.send(embed=create_spoilered_embed(ctx))
 
 @client.command()
 async def aslist(ctx):
-  server_id = ctx.guild.id
-  spoiled_channels = list_spoiler_channels(server_id)
-  if spoiled_channels[1] == True:
-    new_spoiler_embed = create_standard_embed("Autospoiled channels:", "All channels are being autospoiled!", basic_color)
-  else:
-    new_line = "\n"
-    new_spoiler_embed = create_standard_embed("Autospoiled channels:", f"{new_line.join(spoiled_channels[0])}", basic_color)
-  await ctx.channel.send(embed=new_spoiler_embed)
+  await ctx.channel.send(embed=create_spoilered_embed(ctx))
+
+#Enable autospoilering
+@slash.slash(
+  name="ason",
+  description="Enable autospoilering on this channel",
+  guild_ids=[525370181074157578, 813813645351059456]
+)
+async def _ason(ctx:SlashContext):  
+  await ctx.send(embed=spoiler_the_channel(ctx))
 
 @client.command()
 async def ason(ctx):
-  channel = ctx.channel
-  server_id = ctx.guild.id
-  new_spoiler_channels(server_id, channel, False)
-  new_spoiler_embed = create_standard_embed("Enabling autospoilering...", f"Autospoilering for {channel.mention} channel enabled!", basic_color)
-  await ctx.channel.send(embed=new_spoiler_embed)
+  await ctx.channel.send(embed=spoiler_the_channel(ctx))
+
+#Disable autospoilering
+@slash.slash(
+  name="asoff",
+  description="Disable autospoilering on this channel",
+  guild_ids=[525370181074157578, 813813645351059456]
+)
+async def _asoff(ctx:SlashContext):  
+  await ctx.send(embed=unspoiler_the_channel(ctx))
 
 @client.command()
 async def asoff(ctx):
-  channel = ctx.channel
-  server_id = ctx.guild.id
-  delete_spoiler_channels(server_id, channel, False)
-  new_spoiler_embed = create_standard_embed("Disabling autospoilering...", f"Autospoilering for {channel.mention} channel disabled!", basic_color)
-  await ctx.channel.send(embed=new_spoiler_embed)
-#===========================================================
+  await ctx.channel.send(embed=unspoiler_the_channel(ctx))
+#==============================================================
 
 keep_alive()
 client.run(os.environ['TOKEN'])
