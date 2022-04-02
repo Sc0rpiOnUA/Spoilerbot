@@ -1,12 +1,11 @@
 import discord
 import os
-import requests
-import json
 import random
 from discord.ext import commands
 from discord_slash import SlashCommand, SlashContext
 from discord_slash.utils.manage_commands import create_choice, create_option
 from replit import db
+from inspirobot import Inspirobot
 from keep_alive import keep_alive
 
 prefix = "$"
@@ -14,6 +13,7 @@ basic_color = 0x98ff98 # - Mint Green
 
 client = commands.Bot(command_prefix=prefix, help_command=None)
 slash = SlashCommand(client, sync_commands=True)
+inspiro = Inspirobot(client)
 
 #Commands for help menu
 help_description = f"Currently available commands for Spoilerbot\n\n\
@@ -58,19 +58,6 @@ starter_encouragements = [
   "Hang in there!",
   "You are awesome!"]
 #-----------------------General functions-----------------------
-
-def get_inspiroquote():
-  response = requests.get\
-  ("https://zenquotes.io/api/random")
-  json_data = json.loads(response.text)
-  quote = json_data[0]['q']
-  author = json_data[0]['a']
-  return quote, author
-
-def get_inspiropic():
-  response = requests.get\
-  ("https://inspirobot.me/api?generate=true")  
-  return response.text
 
 def list_encouragements():
   if "encouragements" in db.keys():
@@ -201,7 +188,7 @@ def create_help_embed():
   return help_embed
 
 def create_inspiroquote_embed():
-  quote = get_inspiroquote()
+  quote = inspiro.get_inspiroquote()
   inspire_embed = create_standard_embed(quote[0], " -" + quote[1], basic_color)
   return inspire_embed
 
@@ -288,11 +275,11 @@ async def inspiroquote(ctx):
   guild_ids=[525370181074157578, 813813645351059456]
 )
 async def _inspiropic(ctx:SlashContext):  
-  await ctx.send(get_inspiropic())
+  await ctx.send(inspiro.get_inspiropic())
 
 @client.command()
 async def inspiropic(ctx):
-  await ctx.channel.send(get_inspiropic())
+  await ctx.channel.send(inspiro.get_inspiropic())
 
 #List custom encouragements
 @slash.slash(
@@ -389,5 +376,6 @@ async def asoff(ctx):
   await ctx.channel.send(embed=unspoiler_the_channel(ctx))
 #==============================================================
 
-keep_alive()
 client.run(os.environ['TOKEN'])
+keep_alive()
+inspiro.run()
