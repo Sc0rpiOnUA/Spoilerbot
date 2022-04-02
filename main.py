@@ -376,6 +376,6 @@ async def asoff(ctx):
   await ctx.channel.send(embed=unspoiler_the_channel(ctx))
 #==============================================================
 
-client.run(os.environ['TOKEN'])
 keep_alive()
 inspiro.run()
+client.run(os.environ['TOKEN'])
