@@ -15,4 +15,5 @@ flask = "^1.1.2"
 pip = "^22.0.4"
 python = "^3.8"
 replit = "^3.0.0"
+schedule = "^1.1.0"
 [tool.poetry.dev-dependencies]
