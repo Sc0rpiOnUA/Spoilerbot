@@ -1,6 +1,8 @@
 import discord
 import os
 import random
+import re
+from string import punctuation
 from discord.ext import commands
 from discord_slash import SlashCommand, SlashContext
 from discord_slash.utils.manage_commands import create_choice, create_option
@@ -21,7 +23,9 @@ help_description = f"Currently available commands for Spoilerbot\n\n\
 To access them, use `/` instead of the prefix `{prefix}`\n"
 
 general_commands = f"\
-`{prefix}help` - list all the available commands"
+`{prefix}help` - list all the available commands\n\
+`{prefix}ping` - get the response from the bot\n\
+`{prefix}servertime` - get the time of the server (used for scheduling inspiropics)"
 
 autospoilering_commands = f"\
 `{prefix}aslist` - list all autospoiled channels\n\
@@ -30,7 +34,10 @@ autospoilering_commands = f"\
 
 inspire_commands = f"\
 `{prefix}inspiroquote` - get an inspirational quote\n\
-`{prefix}inspiropic` - get an image from inspirobot"
+`{prefix}inspiropic` - get an image from Inspirobot\n\
+`{prefix}apicnew [Server time]` - schedule an automatic Inspiropic every day for the specified time\n\
+`{prefix}apiclist` - list all scheduled Inspiropics on the server\n\
+`{prefix}apicdel [Index]` - delete scheduled Inspiropic time at an index"
 
 encouragement_commands = f"\
 `{prefix}elist` - list all the custom encouragements\n\
@@ -57,6 +64,9 @@ starter_encouragements = [
   "Cheer up!",
   "Hang in there!",
   "You are awesome!"]
+
+split_symbols = punctuation
+split_symbols += " "
 #-----------------------General functions-----------------------
 
 def list_encouragements():
@@ -112,9 +122,9 @@ def list_spoiler_channels(server_id):
   server_options = db.prefix(server_id)
   for server_option in server_options:
     sections = server_option.split('_')
-    if sections[1] + "_" + sections[2] == "autospoilering_all" and db[server_option] == "True":
+    if server_option == f"{server_id}_autospoilering_all" and db[server_option] == "True":
       all_autospoiled = True
-    if sections[2] == "autospoilering" and db[server_option] == "True":
+    elif sections[2] == "autospoilering" and db[server_option] == "True":
       channels.append(sections[1])
   return channels, all_autospoiled
 
@@ -133,52 +143,38 @@ def delete_spoiler_channels(server_id, channel, all_channels):
     if f"{server_id}_{channel}_autospoilering" in db.keys():
       db[f"{server_id}_{channel}_autospoilering"] = "False"
 
+def new_autoinspiropic_time(server_id, channel, server_time):
+  index = 0
+  while f"{server_id}_{channel}_autoinspiropic_{index}" in db.keys():
+    index += 1
+  db[f"{server_id}_{channel}_autoinspiropic_{index}"] = server_time
+
+def list_autoinspiropic_times(server_id):
+  channels = []
+  server_options = db.prefix(server_id)
+  counter = 1
+  for server_option in server_options:
+    sections = server_option.split('_')
+    if sections[2] == "autoinspiropic":
+      channels.append(f"{counter}. {sections[1]} ({sections[3]}) - {db[server_option]}")
+      counter += 1
+  return channels
+
+def delete_autoinspiropic_time(server_id, index):
+  options_list = [option for option in db.prefix(server_id) if option.split('_')[2] == "autoinspiropic"]  
+
+  if index < 0 or index > len(options_list):
+    return "Index out of bounds!"
+  else:
+    index -= 1
+    del db[options_list[index]]
+    return "Time deleted successfully!"
+      
+
 def create_standard_embed(embed_title, embed_description, embed_color):
   new_embed = discord.Embed(title=embed_title, description=embed_description, color=embed_color)
   return new_embed
-#--------------------------------------------------------------
 
-@client.event
-async def on_ready():
-  print("We have logged in as {0.user}".format(client))
-  await client.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name=f"{prefix}help"))
-#--------------------------------------------------------------
-
-@client.listen("on_message")
-async def autospoilering(message):
-  msg = message.content
-  attachments = message.attachments
-  author = message.author
-
-  if author == client.user:
-    return  
-
-  if attachments:
-    server_id = message.guild.id
-    channel = message.channel
-    if (f"{server_id}_{channel}_autospoilering" in db.keys() and db[f"{server_id}_{channel}_autospoilering"] == "True") or\
-    (f"{server_id}_autospoilering_all" in db.keys() and db[f"{server_id}_autospoilering_all"] == "True"):
-      await message.delete()
-      for attachment in attachments:
-        message_text = "**From** " + author.mention + "\n\n" + msg
-        file = attachment
-        file.filename = f"SPOILER_{file.filename}"
-        spoiler = await file.to_file()      
-        await message.channel.send(content=message_text, file=spoiler)
-
-@client.listen("on_message")
-async def encouraging(message):
-  msg = message.content 
-  options = starter_encouragements
-
-  if message.author == client.user:
-    return 
-
-  if "encouragements" in db.keys():
-    options = options + list(db["encouragements"])
-
-  if any(word in msg.lower() for word in sad_words):
-    await message.channel.send(random.choice(options))
 #---------------------Commands functions---------------------
 
 def create_help_embed():
@@ -228,16 +224,82 @@ def unspoiler_the_channel(ctx):
   delete_spoiler_channels(server_id, channel, False)
   new_spoiler_embed = create_standard_embed("Disabling autospoilering...", f"Autospoilering for {channel.mention} channel disabled!", basic_color)
   return new_spoiler_embed
-#========================Slash commands========================
+
+def autoinspiropic_the_channel(ctx, server_time):
+  channel = ctx.channel
+  server_id = ctx.guild.id
+  new_autoinspiropic_time(server_id, channel, server_time)
+  new_autoinspiropic_embed = create_standard_embed("Scheduling inspiropics for the channel...", f"Inspiropics for {channel.mention} channel at {server_time} scheduled!", basic_color)
+  return new_autoinspiropic_embed
+
+def create_autoinspiropic_embed(ctx):
+  server_id = ctx.guild.id
+  autopic_channels = list_autoinspiropic_times(server_id)
+  new_line = "\n"
+  new_autoinspiropic_embed = create_standard_embed("Scheduled inspiropics for the server (UTC time):", f"{new_line.join(autopic_channels)}", basic_color)
+  return new_autoinspiropic_embed
+
+def delete_autoinspiropic_embed(ctx, index):
+  server_id = ctx.guild.id
+  result = delete_autoinspiropic_time(server_id, index)
+  new_autoinspiropic_embed = create_standard_embed("Deleting inspiropics for the channel...", result, basic_color)
+  return new_autoinspiropic_embed
+#--------------------------------------------------------------
+
+@client.event
+async def on_ready():
+  print("We have logged in as {0.user}".format(client))
+  await client.change_presence(activity=discord.Activity(type=discord.ActivityType.listening, name=f"{prefix}help"))
+  keep_alive()
+  await inspiro.run()
+  #await send_Hello()
+#--------------------------------------------------------------
+
+@client.listen("on_message")
+async def autospoilering(message):
+  msg = message.content
+  attachments = message.attachments
+  author = message.author
+
+  if author == client.user:
+    return  
+
+  if attachments:
+    server_id = message.guild.id
+    channel = message.channel
+    if (f"{server_id}_{channel}_autospoilering" in db.keys() and db[f"{server_id}_{channel}_autospoilering"] == "True") or\
+    (f"{server_id}_autospoilering_all" in db.keys() and db[f"{server_id}_autospoilering_all"] == "True"):
+      await message.delete()
+      for attachment in attachments:
+        message_text = "**From** " + author.mention + "\n\n" + msg
+        file = attachment
+        file.filename = f"SPOILER_{file.filename}"
+        spoiler = await file.to_file()      
+        await message.channel.send(content=message_text, file=spoiler)
+
+@client.listen("on_message")
+async def encouraging(message):
+  msg = message.content 
+  options = starter_encouragements
+
+  if message.author == client.user:
+    return 
+
+  if "encouragements" in db.keys():
+    options = options + list(db["encouragements"])
+
+  if any(word in re.split(f'[{split_symbols}]', msg.lower()) for word in sad_words):
+    await message.channel.send(random.choice(options))
+  #========================Slash commands========================
 
 #For faster slash commands update, use guild IDs inside slash.slash():
-#guild_ids=[525370181074157578, 813813645351059456]
+#guild_ids=[int(os.environ['ID_Test']), int(os.environ['ID_SPeach'])]
   
 #Ping
 @slash.slash(
   name="ping",
   description="Ping",
-  guild_ids=[525370181074157578, 813813645351059456]
+  guild_ids=[int(os.environ['ID_Test']), int(os.environ['ID_SPeach'])]
 )
 async def _ping(ctx:SlashContext):
   await ctx.send("Pong!")
@@ -246,7 +308,7 @@ async def _ping(ctx:SlashContext):
 @slash.slash(
   name="help",
   description="Displays help commands",
-  guild_ids=[525370181074157578, 813813645351059456]
+  guild_ids=[int(os.environ['ID_Test']), int(os.environ['ID_SPeach'])]
 )
 async def _help(ctx:SlashContext):  
   await ctx.send(embed=create_help_embed())
@@ -259,7 +321,7 @@ async def help(ctx):
 @slash.slash(
   name="inspiroquote",
   description="Get quote from Inspirobot",
-  guild_ids=[525370181074157578, 813813645351059456]
+  guild_ids=[int(os.environ['ID_Test']), int(os.environ['ID_SPeach'])]
 )
 async def _inspiroquote(ctx:SlashContext):  
   await ctx.send(embed=create_inspiroquote_embed())
@@ -272,7 +334,7 @@ async def inspiroquote(ctx):
 @slash.slash(
   name="inspiropic",
   description="Get a picture from Inspirobot",
-  guild_ids=[525370181074157578, 813813645351059456]
+  guild_ids=[int(os.environ['ID_Test']), int(os.environ['ID_SPeach'])]
 )
 async def _inspiropic(ctx:SlashContext):  
   await ctx.send(inspiro.get_inspiropic())
@@ -285,7 +347,7 @@ async def inspiropic(ctx):
 @slash.slash(
   name="elist",
   description="List custom encouragements",
-  guild_ids=[525370181074157578, 813813645351059456]
+  guild_ids=[int(os.environ['ID_Test']), int(os.environ['ID_SPeach'])]
 )
 async def _elist(ctx:SlashContext):  
   await ctx.send(embed=create_encouragements_embed())
@@ -298,7 +360,7 @@ async def elist(ctx):
 @slash.slash(
   name="enew",
   description="Add new encouragement",
-  guild_ids=[525370181074157578, 813813645351059456],
+  guild_ids=[int(os.environ['ID_Test']), int(os.environ['ID_SPeach'])],
   options=[
     create_option(
       name="encouragement",
@@ -319,7 +381,7 @@ async def enew(ctx, *, encouragement):
 @slash.slash(
   name="edelete",
   description="Delete encouragement from index",
-  guild_ids=[525370181074157578, 813813645351059456],
+  guild_ids=[int(os.environ['ID_Test']), int(os.environ['ID_SPeach'])],
   options=[
     create_option(
       name="index",
@@ -340,7 +402,7 @@ async def edelete(ctx, index):
 @slash.slash(
   name="aslist",
   description="List channels with automatic spoilering",
-  guild_ids=[525370181074157578, 813813645351059456]
+  guild_ids=[int(os.environ['ID_Test']), int(os.environ['ID_SPeach'])]
 )
 async def _aslist(ctx:SlashContext):  
   await ctx.send(embed=create_spoilered_embed(ctx))
@@ -353,7 +415,7 @@ async def aslist(ctx):
 @slash.slash(
   name="ason",
   description="Enable autospoilering on this channel",
-  guild_ids=[525370181074157578, 813813645351059456]
+  guild_ids=[int(os.environ['ID_Test']), int(os.environ['ID_SPeach'])]
 )
 async def _ason(ctx:SlashContext):  
   await ctx.send(embed=spoiler_the_channel(ctx))
@@ -366,7 +428,7 @@ async def ason(ctx):
 @slash.slash(
   name="asoff",
   description="Disable autospoilering on this channel",
-  guild_ids=[525370181074157578, 813813645351059456]
+  guild_ids=[int(os.environ['ID_Test']), int(os.environ['ID_SPeach'])]
 )
 async def _asoff(ctx:SlashContext):  
   await ctx.send(embed=unspoiler_the_channel(ctx))
@@ -374,8 +436,75 @@ async def _asoff(ctx:SlashContext):
 @client.command()
 async def asoff(ctx):
   await ctx.channel.send(embed=unspoiler_the_channel(ctx))
+
+#Schedule automatic inspiropics for the channel
+@slash.slash(
+  name="apicnew",
+  description="Schedule inspiropics for the channel",
+  guild_ids=[int(os.environ['ID_Test']), int(os.environ['ID_SPeach'])],
+  options=[
+    create_option(
+      name="server_time",
+      description="Time (on server) when you want daily inspiropics",
+      required=True,
+      option_type=3
+    )
+  ]
+)
+async def _apicnew(ctx:SlashContext, server_time:str):  
+  await ctx.send(embed=autoinspiropic_the_channel(ctx, server_time))
+
+@client.command()
+async def apicnew(ctx, server_time:str):
+  await ctx.channel.send(embed=autoinspiropic_the_channel(ctx, server_time))
+
+#List channels with automatic inspiropics
+@slash.slash(
+  name="apiclist",
+  description="List channels with automatic inspiropics",
+  guild_ids=[int(os.environ['ID_Test']), int(os.environ['ID_SPeach'])]
+)
+async def _apiclist(ctx:SlashContext):  
+  await ctx.send(embed=create_autoinspiropic_embed(ctx))
+
+@client.command()
+async def apiclist(ctx):
+  await ctx.channel.send(embed=create_autoinspiropic_embed(ctx))
+
+#Delete automatic inspiropics by index
+@slash.slash(
+  name="apicdel",
+  description="Delete autoinspiropics time at a given index",
+  guild_ids=[int(os.environ['ID_Test']), int(os.environ['ID_SPeach'])],
+  options=[
+    create_option(
+      name="index",
+      description="Index of inspiropic time you wish to remove",
+      required=True,
+      option_type=4
+    )
+  ]
+)
+async def _apicdel(ctx:SlashContext, index:str):  
+  await ctx.send(embed=delete_autoinspiropic_embed(ctx, index))
+
+@client.command()
+async def apicdel(ctx, index:str):
+  await ctx.channel.send(embed=delete_autoinspiropic_embed(ctx, index))
+
+#Get server time
+@slash.slash(
+  name="servertime",
+  description="Display server time",
+  guild_ids=[int(os.environ['ID_Test']), int(os.environ['ID_SPeach'])]
+)
+async def _servertime(ctx:SlashContext):  
+  await ctx.send(embed=create_standard_embed("🕑 Server time:", inspiro.get_local_time(), basic_color))
+
+@client.command()
+async def servertime(ctx):
+  await ctx.channel.send(embed=create_standard_embed("🕑 Server time:", inspiro.get_local_time(), basic_color))
 #==============================================================
 
-keep_alive()
-inspiro.run()
+
 client.run(os.environ['TOKEN'])

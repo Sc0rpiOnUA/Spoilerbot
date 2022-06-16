@@ -1,13 +1,9 @@
 import discord
-import os
-import random
 import requests
 import json
-import schedule
 import time
-from discord.ext import commands
+import asyncio
 from replit import db
-from threading import Thread
 
 class Inspirobot:
 
@@ -27,13 +23,46 @@ class Inspirobot:
     ("https://inspirobot.me/api?generate=true")  
     return response.text
 
-  def updater(self):
-      while True:
-        UTC_time = time.gmtime(time.time())
-        print(f"Current time: {UTC_time.tm_hour}:{UTC_time.tm_min}:{UTC_time.tm_sec}")
-        time.sleep(59.9)
+  def seconds_till_next_minute(self):
+    current_seconds = int(time.strftime("%S", time.localtime()))
+    seconds_left = 60 - current_seconds
+    return seconds_left
 
-  def run(self):
-    update_thread = Thread(target=self.updater)
-    update_thread.start()
-  
+  def get_local_time(self):
+    return time.strftime("%H:%M:%S", time.localtime())
+
+  def get_UTC_time(self):
+    return time.strftime("%H:%M:%S", time.gmtime())
+
+  async def updater(self):
+    while True:
+      local_time = time.strftime("%H:%M", time.localtime())
+      print(f"Current time: {local_time}")
+
+      servers = [k for k, v in db.items() if v == local_time]
+      if servers:
+        for server in servers:
+          sections = server.split('_')
+          guild = self.client.get_guild(int(sections[0]))
+          channel = discord.utils.get(guild.channels, name=sections[1])
+          channel_id = channel.id 
+          print(guild)
+          print(channel)
+          print(channel_id)
+          if sections[2] == "autoinspiropic":
+            await channel.send(self.get_inspiropic())
+          elif sections[2] == "autoinspiroquote":
+            await channel.send(self.get_inspiroquote())
+                
+      
+      await asyncio.sleep(self.seconds_till_next_minute())
+
+  async def run(self):        
+    try:
+      print("Starting loop")
+      asyncio.get_event_loop().create_task(self.updater())
+    except KeyboardInterrupt:
+      pass
+    finally:
+      print("Do nothing")
+      pass
